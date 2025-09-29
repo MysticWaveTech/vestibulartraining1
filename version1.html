@@ -1,0 +1,100 @@
+<style>
+canvas{display:block;width:100vw;height:100vh;background:#010010;}
+#controls{position:fixed;top:10px;left:10px;color:#fff;z-index:100;}
+button,select{margin:5px;padding:5px;}
+</style>
+
+<div id="controls">
+  <button id="triggerBackflow">Trigger Backflow</button>
+</div>
+
+<canvas id="toybiCanvas"></canvas>
+
+<script>
+class VestibularNode{
+  constructor(id,branch,inhibitors,microPrompts,tryNode=false){
+    this.id=id;
+    this.branch=branch;
+    this.inhibitors=inhibitors;
+    this.microPrompts=microPrompts; // direction/intensity/phase
+    this.tryNode=tryNode;
+    this.symbols="⧫⧫⧫⧫ ░▒▓█ ϞϞ ϟϟ ◊◊ △△ ⧫⧫ ◈◈ ◉◉";
+    this.children=[];
+    this.angle=Math.random()*Math.PI*2;
+    this.radius=15 + this.symbols.length/5;
+    this.x=0; this.y=0;
+  }
+
+  propagate(depth=6){
+    if(depth<=0) return;
+    for(let i=0;i<2;i++){
+      let branchType=i===0?'sensor-good':'sensor-evil';
+      let child=new VestibularNode(this.id+'.'+depth,branchType,[...this.inhibitors],[...this.microPrompts],depth===1);
+      this.children.push(child);
+      child.propagate(depth-1);
+    }
+  }
+
+  backflow(){
+    this.microPrompts=this.microPrompts.map(m=>m+"-rev");
+    this.inhibitors=this.inhibitors.map(i=>i+"+");
+    this.children.forEach(c=>c.backflow());
+  }
+
+  render(ctx,x,y){
+    this.x=x; this.y=y;
+    // color based on branch
+    let color=this.branch.includes('good')?'rgba(0,200,255,0.7)':'rgba(255,50,150,0.7)';
+    ctx.beginPath();
+    ctx.arc(x,y,this.radius,0,2*Math.PI);
+    ctx.fillStyle=color;
+    ctx.fill();
+    if(this.tryNode && this.children.length<50){ ctx.shadowColor='gold'; ctx.shadowBlur=10; }
+    // micro-motion mimicking vestibular drift
+    let spread=60;
+    this.children.forEach((c,i)=>{
+      let dx=Math.cos(c.angle)*spread*(i+1)*Math.sin(Date.now()/2000);
+      let dy=Math.sin(c.angle)*spread*(i+1)*Math.cos(Date.now()/2000);
+      c.angle+=0.004*(i+1)*(Math.random()>.5?1:-1);
+      c.render(ctx,x+dx,y+dy);
+    });
+  }
+
+  playSound(limit=50){
+    if(!window.AudioContext || this.children.length>limit) return;
+    if(!VestibularNode.ctx) VestibularNode.ctx=new AudioContext();
+    let osc=VestibularNode.ctx.createOscillator();
+    osc.type='sine';
+    osc.frequency.setValueAtTime(120+this.symbols.length*3,VestibularNode.ctx.currentTime);
+    let gain=VestibularNode.ctx.createGain();
+    gain.gain.setValueAtTime(0.01,VestibularNode.ctx.currentTime);
+    osc.connect(gain).connect(VestibularNode.ctx.destination);
+    osc.start();
+    osc.stop(VestibularNode.ctx.currentTime+0.05);
+    this.children.forEach(c=>c.playSound(limit));
+  }
+}
+
+let canvas=document.getElementById('toybiCanvas');
+let ctx=canvas.getContext('2d');
+function resizeCanvas(){canvas.width=window.innerWidth; canvas.height=window.innerHeight;}
+window.addEventListener('resize',resizeCanvas);
+resizeCanvas();
+
+let rootNode=new VestibularNode('vestibular-root','sensor-good',['Inhib1','Inhib2','Inhib3'],['Dir','Intensity','Phase'],true);
+rootNode.propagate(6);
+rootNode.playSound();
+
+function animate(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  rootNode.render(ctx,canvas.width/2,canvas.height/2);
+  requestAnimationFrame(animate);
+}
+
+document.getElementById('triggerBackflow').onclick=function(){
+  rootNode.backflow();
+  rootNode.playSound();
+};
+
+animate();
+</script>
